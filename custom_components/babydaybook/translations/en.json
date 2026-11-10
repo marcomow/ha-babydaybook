@@ -1,0 +1,76 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Baby Daybook",
+        "description": "Home Assistant signs in with an e-mail and password. If you use Google sign-in in the app, first add a password to that same account; Google sign-in keeps working.",
+        "menu_options": {
+          "sign_in": "Sign in with e-mail and password",
+          "set_password": "I sign in with Google: e-mail me a link to set a password"
+        }
+      },
+      "set_password": {
+        "title": "Set a password",
+        "description": "Enter the e-mail address of the Google account you use in Baby Daybook. You will get a message from Baby Daybook with a link to choose a password. Open it, choose a password, then continue here.",
+        "data": {
+          "email": "E-mail"
+        }
+      },
+      "sign_in": {
+        "title": "Sign in to Baby Daybook",
+        "description": "The password is used once to sign in and is not stored.",
+        "data": {
+          "email": "E-mail",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Baby Daybook rejected this e-mail and password.",
+      "email_not_found": "Baby Daybook has no account with this e-mail.",
+      "cannot_connect": "Could not reach Baby Daybook.",
+      "unknown": "Baby Daybook returned an unexpected error. Check the logs."
+    },
+    "abort": {
+      "already_configured": "This account is already set up.",
+      "no_babies": "This account has no babies.",
+      "reauth_successful": "Signed in again.",
+      "wrong_account": "These credentials belong to a different Baby Daybook account."
+    }
+  },
+  "entity": {
+    "button": {
+      "diaper_wet": {
+        "name": "Diaper wet"
+      },
+      "diaper_dirty": {
+        "name": "Diaper dirty"
+      },
+      "diaper_mixed": {
+        "name": "Diaper wet and dirty"
+      }
+    },
+    "switch": {
+      "sleep": {
+        "name": "Sleep"
+      },
+      "breastfeeding_left": {
+        "name": "Breastfeeding left"
+      },
+      "breastfeeding_right": {
+        "name": "Breastfeeding right"
+      }
+    },
+    "sensor": {
+      "last_diaper": {
+        "name": "Last diaper change"
+      },
+      "last_sleep": {
+        "name": "Last sleep"
+      },
+      "last_breastfeeding": {
+        "name": "Last breastfeeding"
+      }
+    }
+  }
+}
