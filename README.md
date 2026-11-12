@@ -38,7 +38,7 @@ on a phone seconds earlier is stopped rather than duplicated.
 
 ## What you get
 
-One device per baby, with:
+One device per baby, with entities that come with fitting icons:
 
 | Entity | What it does |
 |---|---|
@@ -64,6 +64,43 @@ automation:
                else 'button.robin_diaper_dirty' }}
 ```
 
+## Logging in the past, corrections and undo
+
+Six actions cover "it happened a while ago" and "that was wrong". Each exists as a service (for
+automations) and as a voice intent (for AI conversation agents):
+
+| Service | What it does |
+|---|---|
+| `babydaybook.log_diaper` | Diaper change, `kind`: `wet`, `dirty` or `mixed` |
+| `babydaybook.fell_asleep` | Starts the sleep. If one is already running, a given time moves its start |
+| `babydaybook.woke_up` | Ends the sleep. If it was already ended, a given time moves its end |
+| `babydaybook.start_breastfeeding` | Starts on `side` `left` or `right`, or switches to it |
+| `babydaybook.stop_breastfeeding` | Ends the feeding. If it was already ended, a given time moves its end |
+| `babydaybook.delete_last` | Deletes the newest `diaper`, `sleep` or `breastfeeding` entry |
+
+All but `delete_last` accept `minutes_ago` or `time` (a time of day means its most recent
+occurrence); leave both out for "now". `baby` is the baby's name, in any case and without emoji,
+and is only needed when the account has more than one.
+
+```yaml
+action: babydaybook.woke_up
+data:
+  baby: Robin
+  minutes_ago: 10
+```
+
+Impossible requests are refused with an explanation rather than written: a time in the future, a
+wake-up before the sleep started, or a "woke up" that would move the end of a finished sleep by
+more than three hours.
+
+### Voice
+
+The same actions are registered as intents, which Home Assistant offers to AI conversation agents
+as tools. With such an agent, natural phrases work in any language it speaks: "Robin woke up ten
+minutes ago", "wet diaper for Robin at half past two", "delete Robin's last diaper". Nothing has to
+be exposed or configured per action. The built-in sentence-matching agent does not understand
+these phrases; with it, use the entities ("turn on Robin sleep").
+
 ## Install
 
 1. In HACS, add this repository as a custom repository of type *Integration* and install
@@ -79,10 +116,8 @@ automation:
 
 ## Status and limits
 
-- **Not yet tried against a real account.** The code is covered by tests that run inside Home
-  Assistant against an in-memory imitation of Firebase, built from the protocol documented by the
-  upstream SDK. The first real sign-in and the first real diaper entry still have to be checked by
-  hand; start with the wet-diaper button and delete the entry in the app.
+- Sign-in, reading and writing have been confirmed against a real account. The automated tests
+  run inside Home Assistant against an in-memory imitation of Firebase.
 - It can break. It identifies itself to Google as the Android app (version 7.0.8) and relies on
   the app's current data layout. An app update or a change on the developer's side can stop it
   working, and it is outside the app's terms of service.

@@ -72,5 +72,141 @@
         "name": "Last breastfeeding"
       }
     }
+  },
+  "services": {
+    "log_diaper": {
+      "name": "Log diaper change",
+      "description": "Records a diaper change, now or earlier.",
+      "fields": {
+        "kind": {
+          "name": "Kind",
+          "description": "What was in the diaper."
+        },
+        "baby": {
+          "name": "Baby",
+          "description": "Name of the baby. Optional when the account has only one."
+        },
+        "minutes_ago": {
+          "name": "Minutes ago",
+          "description": "How long ago it happened. Leave empty for now."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When it happened, as a time of day or a date and time. Use this or minutes ago, not both."
+        }
+      }
+    },
+    "fell_asleep": {
+      "name": "Fell asleep",
+      "description": "Starts the sleep timer, now or from an earlier moment. If a sleep is already running, a given time corrects when it started.",
+      "fields": {
+        "baby": {
+          "name": "Baby",
+          "description": "Name of the baby. Optional when the account has only one."
+        },
+        "minutes_ago": {
+          "name": "Minutes ago",
+          "description": "How long ago it happened. Leave empty for now."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When it happened, as a time of day or a date and time. Use this or minutes ago, not both."
+        }
+      }
+    },
+    "woke_up": {
+      "name": "Woke up",
+      "description": "Ends the running sleep, now or at an earlier moment. If the sleep was already ended, a given time corrects when it ended.",
+      "fields": {
+        "baby": {
+          "name": "Baby",
+          "description": "Name of the baby. Optional when the account has only one."
+        },
+        "minutes_ago": {
+          "name": "Minutes ago",
+          "description": "How long ago it happened. Leave empty for now."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When it happened, as a time of day or a date and time. Use this or minutes ago, not both."
+        }
+      }
+    },
+    "start_breastfeeding": {
+      "name": "Start breastfeeding",
+      "description": "Starts feeding on a side, or switches to it if a feeding is running.",
+      "fields": {
+        "side": {
+          "name": "Side",
+          "description": "The side to feed on."
+        },
+        "baby": {
+          "name": "Baby",
+          "description": "Name of the baby. Optional when the account has only one."
+        },
+        "minutes_ago": {
+          "name": "Minutes ago",
+          "description": "How long ago it happened. Leave empty for now."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When it happened, as a time of day or a date and time. Use this or minutes ago, not both."
+        }
+      }
+    },
+    "stop_breastfeeding": {
+      "name": "Stop breastfeeding",
+      "description": "Ends the running feeding, now or at an earlier moment.",
+      "fields": {
+        "baby": {
+          "name": "Baby",
+          "description": "Name of the baby. Optional when the account has only one."
+        },
+        "minutes_ago": {
+          "name": "Minutes ago",
+          "description": "How long ago it happened. Leave empty for now."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When it happened, as a time of day or a date and time. Use this or minutes ago, not both."
+        }
+      }
+    },
+    "delete_last": {
+      "name": "Delete last entry",
+      "description": "Deletes the most recent entry of one activity, to undo a mistake.",
+      "fields": {
+        "baby": {
+          "name": "Baby",
+          "description": "Name of the baby. Optional when the account has only one."
+        },
+        "activity": {
+          "name": "Activity",
+          "description": "Which kind of entry to delete."
+        }
+      }
+    }
+  },
+  "selector": {
+    "kind": {
+      "options": {
+        "wet": "Wet",
+        "dirty": "Dirty",
+        "mixed": "Wet and dirty"
+      }
+    },
+    "side": {
+      "options": {
+        "left": "Left",
+        "right": "Right"
+      }
+    },
+    "activity": {
+      "options": {
+        "diaper": "Diaper change",
+        "sleep": "Sleep",
+        "breastfeeding": "Breastfeeding"
+      }
+    }
   }
 }

@@ -1,0 +1,59 @@
+.timed: &timed
+  baby:
+    selector:
+      text:
+  minutes_ago:
+    selector:
+      number:
+        min: 0
+        max: 1440
+        unit_of_measurement: min
+        mode: box
+  time:
+    selector:
+      time:
+
+log_diaper:
+  fields:
+    kind:
+      required: true
+      default: wet
+      selector:
+        select:
+          translation_key: kind
+          options: [wet, dirty, mixed]
+    <<: *timed
+
+fell_asleep:
+  fields:
+    <<: *timed
+
+woke_up:
+  fields:
+    <<: *timed
+
+start_breastfeeding:
+  fields:
+    side:
+      required: true
+      selector:
+        select:
+          translation_key: side
+          options: [left, right]
+    <<: *timed
+
+stop_breastfeeding:
+  fields:
+    <<: *timed
+
+delete_last:
+  fields:
+    baby:
+      selector:
+        text:
+    activity:
+      required: true
+      selector:
+        select:
+          translation_key: activity
+          options: [diaper, sleep, breastfeeding]
