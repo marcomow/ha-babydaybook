@@ -56,4 +56,42 @@ delete_last:
       selector:
         select:
           translation_key: activity
-          options: [diaper, sleep, breastfeeding]
+          options: [diaper, sleep, breastfeeding, bottle]
+
+log_bottle:
+  fields:
+    amount:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 500
+          unit_of_measurement: ml
+          mode: box
+    <<: *timed
+
+correct_diaper:
+  fields:
+    kind:
+      selector:
+        select:
+          translation_key: kind
+          options: [wet, dirty, mixed]
+    <<: *timed
+
+add_note:
+  fields:
+    baby:
+      selector:
+        text:
+    activity:
+      required: true
+      selector:
+        select:
+          translation_key: activity
+          options: [diaper, sleep, breastfeeding, bottle]
+    note:
+      required: true
+      selector:
+        text:
+          multiline: true

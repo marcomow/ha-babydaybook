@@ -45,6 +45,7 @@ DOCUMENT_PREFIX = f"projects/{PROJECT_ID}/databases/(default)/documents"
 TYPE_DIAPER = "diaper_change"
 TYPE_SLEEP = "sleeping"
 TYPE_BREASTFEEDING = "breastfeeding"
+TYPE_BOTTLE = "bottle"
 
 SIDE_LEFT = "left"
 SIDE_RIGHT = "right"
@@ -238,6 +239,8 @@ def build_action(
     side: str = "",
     pee: bool = False,
     poo: bool = False,
+    volume: float = 0,
+    group_uid: str = "",
 ) -> dict[str, Any]:
     """Build a complete ``dailyActions`` record the way the app writes them."""
     return {
@@ -248,7 +251,7 @@ def build_action(
         "startMillis": start_millis,
         "updatedMillis": now_millis(),
         "rev": 4,
-        "groupUid": "",
+        "groupUid": group_uid,
         "notes": "",
         "inProgress": 1 if in_progress else 0,
         "endMillis": 0,
@@ -262,7 +265,7 @@ def build_action(
         "amountUnit": "",
         "temperature": 0,
         "hairWash": 0,
-        "volume": 0,
+        "volume": volume,
         "pee": 1 if pee else 0,
         "poo": 1 if poo else 0,
     }
@@ -629,6 +632,36 @@ class BabyDaybookClient:
                 pee=pee,
                 poo=poo,
             )
+        )
+
+    async def log_bottle(
+        self,
+        baby_uid: str,
+        *,
+        volume_ml: float,
+        group_uid: str = "",
+        at_millis: int | None = None,
+    ) -> dict[str, Any]:
+        """Record a finished bottle feed; the amount is in millilitres."""
+        if not self.user_uid:
+            await self.authenticate()
+        return await self._create_action(
+            build_action(
+                user_uid=self.user_uid,
+                baby_uid=baby_uid,
+                action_type=TYPE_BOTTLE,
+                start_millis=at_millis or now_millis(),
+                volume=float(volume_ml),
+                group_uid=group_uid,
+            )
+        )
+
+    async def edit_action(
+        self, action: dict[str, Any], changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Change some fields of a record."""
+        return await self._update_action(
+            action, {**changes, "updatedMillis": now_millis()}
         )
 
     async def start_timer(

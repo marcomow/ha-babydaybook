@@ -21,7 +21,9 @@ from homeassistant.util import dt as dt_util
 from .api import (
     SIDE_LEFT,
     SIDE_RIGHT,
+    TYPE_BOTTLE,
     TYPE_BREASTFEEDING,
+    TYPE_DIAPER,
     TYPE_SLEEP,
     Baby,
     BabyDaybookApiError,
@@ -68,6 +70,18 @@ class BabyState:
     def last(self, action_type: str) -> dict[str, Any] | None:
         """Return the newest record of a type, if any."""
         return last_action(self.actions.values(), action_type)
+
+    def last_finished(self, action_type: str) -> dict[str, Any] | None:
+        """Return the newest record of a type that has ended, if any."""
+        finished = [
+            action
+            for action in self.actions.values()
+            if action.get("type") == action_type
+            and action.get("endMillis")
+            and not action.get("inProgress")
+            and not action.get("deleted")
+        ]
+        return max(finished, key=lambda a: a["endMillis"], default=None)
 
     def merge(self, records: list[dict[str, Any]]) -> None:
         """Add or replace records and advance the sync cursor."""
@@ -174,6 +188,61 @@ class BabyDaybookCoordinator(DataUpdateCoordinator[dict[str, BabyState]]):
             raise HomeAssistantError(f"Could not log the diaper change: {err}") from err
         self._publish(self._states[baby_uid], record)
         return OUTCOME_LOGGED
+
+    async def async_log_bottle(
+        self, baby_uid: str, *, amount_ml: float, at: datetime | None = None
+    ) -> str:
+        """Record a bottle feed, with the same feed type as the previous bottle."""
+        at_millis = _past_millis(at)
+        try:
+            state = await self._fresh_state(baby_uid)
+            previous = state.last(TYPE_BOTTLE)
+            record = await self.client.log_bottle(
+                baby_uid,
+                volume_ml=amount_ml,
+                group_uid=(previous or {}).get("groupUid") or "",
+                at_millis=at_millis,
+            )
+        except BabyDaybookError as err:
+            raise HomeAssistantError(f"Could not log the bottle: {err}") from err
+        self._publish(state, record)
+        return OUTCOME_LOGGED
+
+    async def async_correct_diaper(
+        self,
+        baby_uid: str,
+        *,
+        pee: bool | None = None,
+        poo: bool | None = None,
+        at: datetime | None = None,
+    ) -> str:
+        """Change what was in the newest diaper, when it was changed, or both."""
+        changes: dict[str, Any] = {}
+        if pee is not None and poo is not None:
+            changes |= {"pee": int(pee), "poo": int(poo)}
+        if (at_millis := _past_millis(at)) is not None:
+            changes["startMillis"] = at_millis
+        if not changes:
+            raise ServiceValidationError("Say what to correct: the kind, the time or both")
+        return await self._edit_last(baby_uid, TYPE_DIAPER, changes)
+
+    async def async_add_note(self, baby_uid: str, action_type: str, note: str) -> str:
+        """Set the note on the newest record of a type."""
+        return await self._edit_last(baby_uid, action_type, {"notes": note.strip()})
+
+    async def _edit_last(
+        self, baby_uid: str, action_type: str, changes: dict[str, Any]
+    ) -> str:
+        try:
+            state = await self._fresh_state(baby_uid)
+            last = state.last(action_type)
+            if not last:
+                raise ServiceValidationError("There is no recent entry to change")
+            record = await self.client.edit_action(last, changes)
+        except BabyDaybookError as err:
+            raise HomeAssistantError(f"Baby Daybook update failed: {err}") from err
+        self._publish(state, record)
+        return OUTCOME_CORRECTED
 
     async def async_set_sleep(
         self, baby_uid: str, asleep: bool, at: datetime | None = None

@@ -1,4 +1,4 @@
-"""Services and voice intents: the same six actions, exposed two ways.
+"""Services and voice intents: the same actions, exposed two ways.
 
 Services are for automations and scripts. Intents are for voice: Home
 Assistant offers every registered intent to AI conversation agents as a tool,
@@ -19,9 +19,17 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import intent
 from homeassistant.util import dt as dt_util
 
-from .api import SIDE_LEFT, SIDE_RIGHT, TYPE_BREASTFEEDING, TYPE_DIAPER, TYPE_SLEEP
+from .api import (
+    SIDE_LEFT,
+    SIDE_RIGHT,
+    TYPE_BOTTLE,
+    TYPE_BREASTFEEDING,
+    TYPE_DIAPER,
+    TYPE_SLEEP,
+)
 from .const import (
     DOMAIN,
+    MAX_BOTTLE_ML,
     OUTCOME_CORRECTED,
     OUTCOME_DELETED,
     OUTCOME_LOGGED,
@@ -35,6 +43,8 @@ ATTR_BABY = "baby"
 ATTR_KIND = "kind"
 ATTR_SIDE = "side"
 ATTR_ACTIVITY = "activity"
+ATTR_AMOUNT = "amount"
+ATTR_NOTE = "note"
 ATTR_MINUTES_AGO = "minutes_ago"
 ATTR_TIME = "time"
 
@@ -48,13 +58,14 @@ ACTIVITIES = {
     "diaper": TYPE_DIAPER,
     "sleep": TYPE_SLEEP,
     "breastfeeding": TYPE_BREASTFEEDING,
+    "bottle": TYPE_BOTTLE,
 }
 SIDES = [SIDE_LEFT, SIDE_RIGHT]
 
 Handler = Callable[[BabyDaybookCoordinator, str, dict[str, Any], datetime | None], Awaitable[str]]
 
 
-# ----- the six actions ------------------------------------------------------
+# ----- the actions ------------------------------------------------------------
 
 
 async def _log_diaper(coordinator, baby_uid, data, when) -> str:
@@ -76,6 +87,23 @@ async def _start_breastfeeding(coordinator, baby_uid, data, when) -> str:
 
 async def _stop_breastfeeding(coordinator, baby_uid, data, when) -> str:
     return await coordinator.async_set_breastfeeding(baby_uid, None, when)
+
+
+async def _log_bottle(coordinator, baby_uid, data, when) -> str:
+    return await coordinator.async_log_bottle(
+        baby_uid, amount_ml=data[ATTR_AMOUNT], at=when
+    )
+
+
+async def _correct_diaper(coordinator, baby_uid, data, when) -> str:
+    pee, poo = DIAPER_KINDS[data[ATTR_KIND]] if ATTR_KIND in data else (None, None)
+    return await coordinator.async_correct_diaper(baby_uid, pee=pee, poo=poo, at=when)
+
+
+async def _add_note(coordinator, baby_uid, data, when) -> str:
+    return await coordinator.async_add_note(
+        baby_uid, ACTIVITIES[data[ATTR_ACTIVITY]], data[ATTR_NOTE]
+    )
 
 
 async def _delete_last(coordinator, baby_uid, data, when) -> str:
@@ -126,12 +154,49 @@ ACTIONS: dict[str, tuple[Handler, dict[Any, Any], bool, str]] = {
         True,
         f"Record in Baby Daybook that breastfeeding ended. {_WHEN}",
     ),
+    "log_bottle": (
+        _log_bottle,
+        {
+            vol.Required(ATTR_AMOUNT): vol.All(
+                vol.Coerce(float), vol.Range(min=1, max=MAX_BOTTLE_ML)
+            )
+        },
+        True,
+        (
+            "Record a finished bottle feed in Baby Daybook. amount is in "
+            f"millilitres. {_WHEN}"
+        ),
+    ),
+    "correct_diaper": (
+        _correct_diaper,
+        {vol.Optional(ATTR_KIND): vol.In(list(DIAPER_KINDS))},
+        True,
+        (
+            "Correct the most recent diaper change in Baby Daybook: pass kind "
+            "(wet, dirty or mixed) to change what it was, and/or minutes_ago "
+            "or time (24-hour HH:MM) to change when it happened. Pass baby "
+            "when a name was said."
+        ),
+    ),
+    "add_note": (
+        _add_note,
+        {
+            vol.Required(ATTR_ACTIVITY): vol.In(list(ACTIVITIES)),
+            vol.Required(ATTR_NOTE): cv.string,
+        },
+        False,
+        (
+            "Write a note on the most recent Baby Daybook entry of one "
+            "activity (diaper, sleep, breastfeeding or bottle), replacing any "
+            "note it had. Pass baby when a name was said."
+        ),
+    ),
     "delete_last": (
         _delete_last,
         {vol.Required(ATTR_ACTIVITY): vol.In(list(ACTIVITIES))},
         False,
         ("Delete the most recent Baby Daybook entry of one activity (diaper, "
-        "sleep or breastfeeding), to undo a mistake. Pass baby when a name "
+        "sleep, breastfeeding or bottle), to undo a mistake. Pass baby when a name "
         "was said."),
     ),
 }

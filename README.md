@@ -45,7 +45,8 @@ One device per baby, with entities that come with fitting icons:
 | `button` Diaper wet / Diaper dirty / Diaper wet and dirty | Records a diaper change now |
 | `switch` Sleep | On = sleep timer running. Turning it on or off starts or stops it |
 | `switch` Breastfeeding left / right | On = feeding on that side. Turning the other side on switches side within the same session |
-| `sensor` Last diaper change / Last sleep / Last breastfeeding | When it last happened, with details as attributes |
+| `sensor` Last diaper change / Last sleep / Last breastfeeding / Last bottle | When it last happened, with details (kind, side, amount, note) as attributes |
+| `sensor` Last woke up | When the latest sleep ended, so a dashboard shows how long the baby has been awake |
 
 Because these are ordinary entities they work with voice assistants, dashboards and any
 automation trigger without custom services. Example for a two-button IKEA switch:
@@ -66,7 +67,7 @@ automation:
 
 ## Logging in the past, corrections and undo
 
-Six actions cover "it happened a while ago" and "that was wrong". Each exists as a service (for
+Nine actions cover "it happened a while ago" and "that was wrong". Each exists as a service (for
 automations) and as a voice intent (for AI conversation agents):
 
 | Service | What it does |
@@ -76,9 +77,12 @@ automations) and as a voice intent (for AI conversation agents):
 | `babydaybook.woke_up` | Ends the sleep. If it was already ended, a given time moves its end |
 | `babydaybook.start_breastfeeding` | Starts on `side` `left` or `right`, or switches to it |
 | `babydaybook.stop_breastfeeding` | Ends the feeding. If it was already ended, a given time moves its end |
-| `babydaybook.delete_last` | Deletes the newest `diaper`, `sleep` or `breastfeeding` entry |
+| `babydaybook.log_bottle` | Finished bottle feed, `amount` in millilitres, with the same feed type as the previous bottle |
+| `babydaybook.correct_diaper` | Changes the `kind` and/or the time of the newest diaper change |
+| `babydaybook.add_note` | Writes `note` on the newest `diaper`, `sleep`, `breastfeeding` or `bottle` entry |
+| `babydaybook.delete_last` | Deletes the newest `diaper`, `sleep`, `breastfeeding` or `bottle` entry |
 
-All but `delete_last` accept `minutes_ago` or `time` (a time of day means its most recent
+All but `add_note` and `delete_last` accept `minutes_ago` or `time` (a time of day means its most recent
 occurrence); leave both out for "now". `baby` is the baby's name, in any case and without emoji,
 and is only needed when the account has more than one.
 
@@ -122,8 +126,8 @@ these phrases; with it, use the entities ("turn on Robin sleep").
   the app's current data layout. An app update or a change on the developer's side can stop it
   working, and it is outside the app's terms of service.
 - Updates from the phones arrive within about 30 seconds, not instantly.
-- Only diapers, sleep and breastfeeding are covered. Bottles, medicine and the rest are a small
-  addition each.
+- Diapers, sleep, breastfeeding and bottles are covered. Medicine, pumping and the rest are a
+  small addition each.
 
 ## Where the protocol knowledge comes from
 

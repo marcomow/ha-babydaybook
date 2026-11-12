@@ -70,6 +70,12 @@
       },
       "last_breastfeeding": {
         "name": "Last breastfeeding"
+      },
+      "last_bottle": {
+        "name": "Last bottle"
+      },
+      "last_wake_up": {
+        "name": "Last woke up"
       }
     }
   },
@@ -185,6 +191,68 @@
           "description": "Which kind of entry to delete."
         }
       }
+    },
+    "log_bottle": {
+      "name": "Log bottle",
+      "description": "Records a finished bottle feed, now or earlier, with the same feed type as the previous bottle.",
+      "fields": {
+        "amount": {
+          "name": "Amount",
+          "description": "How much was drunk, in millilitres."
+        },
+        "baby": {
+          "name": "Baby",
+          "description": "Name of the baby. Optional when the account has only one."
+        },
+        "minutes_ago": {
+          "name": "Minutes ago",
+          "description": "How long ago it happened. Leave empty for now."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When it happened, as a time of day or a date and time. Use this or minutes ago, not both."
+        }
+      }
+    },
+    "correct_diaper": {
+      "name": "Correct last diaper change",
+      "description": "Changes what was in the most recent diaper, when it was changed, or both.",
+      "fields": {
+        "kind": {
+          "name": "Kind",
+          "description": "What was really in the diaper. Leave empty to keep it."
+        },
+        "baby": {
+          "name": "Baby",
+          "description": "Name of the baby. Optional when the account has only one."
+        },
+        "minutes_ago": {
+          "name": "Minutes ago",
+          "description": "How long ago it really happened. Leave empty to keep the time."
+        },
+        "time": {
+          "name": "Time",
+          "description": "When it really happened. Use this or minutes ago, not both."
+        }
+      }
+    },
+    "add_note": {
+      "name": "Add note",
+      "description": "Writes a note on the most recent entry of one activity, replacing any note it had.",
+      "fields": {
+        "baby": {
+          "name": "Baby",
+          "description": "Name of the baby. Optional when the account has only one."
+        },
+        "activity": {
+          "name": "Activity",
+          "description": "Which kind of entry gets the note."
+        },
+        "note": {
+          "name": "Note",
+          "description": "The text of the note."
+        }
+      }
     }
   },
   "selector": {
@@ -205,7 +273,8 @@
       "options": {
         "diaper": "Diaper change",
         "sleep": "Sleep",
-        "breastfeeding": "Breastfeeding"
+        "breastfeeding": "Breastfeeding",
+        "bottle": "Bottle"
       }
     }
   }

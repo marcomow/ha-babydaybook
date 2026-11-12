@@ -174,3 +174,54 @@ def test_clock_times_mean_the_most_recent_occurrence(hass: HomeAssistant) -> Non
     assert timedelta(hours=1, minutes=58) < dt_util.utcnow() - resolve_when(None, earlier) < timedelta(hours=2, minutes=2)
     assert timedelta(hours=21, minutes=58) < dt_util.utcnow() - resolve_when(None, later) < timedelta(hours=22, minutes=2)
     assert resolve_when(None, None) is None and resolve_when(0, None) is None
+
+
+async def test_bottle(hass: HomeAssistant, cloud: FakeCloud) -> None:
+    cloud.put(
+        "babyData/babyUid_baby1/dailyActions/oldbottle",
+        {"uid": "oldbottle", "babyUid": "baby1", "type": "bottle",
+         "startMillis": _now() - 300 * MINUTE, "volume": 90.0, "groupUid": "formula"},
+        stamp=True,
+    )
+    await _setup(hass)
+    await _service(hass, "log_bottle", amount=120, minutes_ago=5)
+    new = next(a for a in cloud.actions("baby1") if a["uid"] != "oldbottle")
+    assert new["type"] == "bottle" and new["volume"] == 120.0
+    assert isinstance(new["volume"], float)  # the app stores volumes as decimals
+    assert new["groupUid"] == "formula"  # same feed type as the previous bottle
+    assert _about(new["startMillis"], _now() - 5 * MINUTE)
+    state = hass.states.get("sensor.robin_last_bottle")
+    assert state.attributes["amount_ml"] == 120.0
+    with pytest.raises(Exception):  # noqa: B017 - schema rejects absurd amounts
+        await _service(hass, "log_bottle", amount=5000)
+
+
+async def test_correct_diaper_and_note(hass: HomeAssistant, cloud: FakeCloud) -> None:
+    await _setup(hass)
+    with pytest.raises(ServiceValidationError):
+        await _service(hass, "correct_diaper", kind="wet")  # nothing logged yet
+    await _service(hass, "log_diaper", kind="wet")
+    with pytest.raises(ServiceValidationError):
+        await _service(hass, "correct_diaper")  # nothing to change
+    await _service(hass, "correct_diaper", kind="mixed", minutes_ago=20)
+    await _service(hass, "add_note", activity="diaper", note=" rash looks better ")
+    (diaper,) = cloud.actions("baby1")
+    assert (diaper["pee"], diaper["poo"]) == (1, 1)
+    assert _about(diaper["startMillis"], _now() - 20 * MINUTE)
+    assert diaper["notes"] == "rash looks better"
+    attributes = hass.states.get("sensor.robin_last_diaper_change").attributes
+    assert attributes["dirty"] is True and attributes["note"] == "rash looks better"
+
+
+async def test_last_woke_up_sensor(hass: HomeAssistant, cloud: FakeCloud) -> None:
+    await _setup(hass)
+    entity = "sensor.robin_last_woke_up"
+    assert hass.states.get(entity).state == "unknown"
+    await _service(hass, "fell_asleep", minutes_ago=60)
+    assert hass.states.get(entity).state == "unknown"
+    await _service(hass, "woke_up", minutes_ago=10)
+    woke = dt_util.parse_datetime(hass.states.get(entity).state)
+    assert timedelta(minutes=9) < dt_util.utcnow() - woke < timedelta(minutes=11)
+    await _service(hass, "fell_asleep")  # asleep again: the last wake-up stays
+    assert dt_util.parse_datetime(hass.states.get(entity).state) == woke
+    assert hass.states.get(entity).attributes["asleep_now"] is True

@@ -24,3 +24,5 @@ OUTCOME_SWITCHED = "switched"
 OUTCOME_CORRECTED = "corrected"
 OUTCOME_DELETED = "deleted"
 OUTCOME_UNCHANGED = "unchanged"
+
+MAX_BOTTLE_ML = 500

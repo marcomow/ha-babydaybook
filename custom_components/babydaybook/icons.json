@@ -40,6 +40,12 @@
       },
       "last_breastfeeding": {
         "default": "mdi:mother-nurse"
+      },
+      "last_bottle": {
+        "default": "mdi:baby-bottle-outline"
+      },
+      "last_wake_up": {
+        "default": "mdi:weather-sunset-up"
       }
     }
   },
@@ -61,6 +67,15 @@
     },
     "delete_last": {
       "service": "mdi:undo"
+    },
+    "log_bottle": {
+      "service": "mdi:baby-bottle-outline"
+    },
+    "correct_diaper": {
+      "service": "mdi:pencil-outline"
+    },
+    "add_note": {
+      "service": "mdi:note-edit-outline"
     }
   }
 }
