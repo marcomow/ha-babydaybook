@@ -38,14 +38,15 @@ on a phone seconds earlier is stopped rather than duplicated.
 
 ## What you get
 
-One device per baby, with:
+One device per baby, with entities that come with fitting icons:
 
 | Entity | What it does |
 |---|---|
 | `button` Diaper wet / Diaper dirty / Diaper wet and dirty | Records a diaper change now |
 | `switch` Sleep | On = sleep timer running. Turning it on or off starts or stops it |
 | `switch` Breastfeeding left / right | On = feeding on that side. Turning the other side on switches side within the same session |
-| `sensor` Last diaper change / Last sleep / Last breastfeeding | When it last happened, with details as attributes |
+| `sensor` Last diaper change / Last sleep / Last breastfeeding / Last bottle | When it last happened, with details (kind, side, amount, note) as attributes |
+| `sensor` Last woke up | When the latest sleep ended, so a dashboard shows how long the baby has been awake |
 
 Because these are ordinary entities they work with voice assistants, dashboards and any
 automation trigger without custom services. Example for a two-button IKEA switch:
@@ -64,6 +65,46 @@ automation:
                else 'button.robin_diaper_dirty' }}
 ```
 
+## Logging in the past, corrections and undo
+
+Nine actions cover "it happened a while ago" and "that was wrong". Each exists as a service (for
+automations) and as a voice intent (for AI conversation agents):
+
+| Service | What it does |
+|---|---|
+| `babydaybook.log_diaper` | Diaper change, `kind`: `wet`, `dirty` or `mixed` |
+| `babydaybook.fell_asleep` | Starts the sleep. If one is already running, a given time moves its start |
+| `babydaybook.woke_up` | Ends the sleep. If it was already ended, a given time moves its end |
+| `babydaybook.start_breastfeeding` | Starts on `side` `left` or `right`, or switches to it |
+| `babydaybook.stop_breastfeeding` | Ends the feeding. If it was already ended, a given time moves its end |
+| `babydaybook.log_bottle` | Finished bottle feed, `amount` in millilitres, with the same feed type as the previous bottle |
+| `babydaybook.correct_diaper` | Changes the `kind` and/or the time of the newest diaper change |
+| `babydaybook.add_note` | Writes `note` on the newest `diaper`, `sleep`, `breastfeeding` or `bottle` entry |
+| `babydaybook.delete_last` | Deletes the newest `diaper`, `sleep`, `breastfeeding` or `bottle` entry |
+
+All but `add_note` and `delete_last` accept `minutes_ago` or `time` (a time of day means its most recent
+occurrence); leave both out for "now". `baby` is the baby's name, in any case and without emoji,
+and is only needed when the account has more than one.
+
+```yaml
+action: babydaybook.woke_up
+data:
+  baby: Robin
+  minutes_ago: 10
+```
+
+Impossible requests are refused with an explanation rather than written: a time in the future, a
+wake-up before the sleep started, or a "woke up" that would move the end of a finished sleep by
+more than three hours.
+
+### Voice
+
+The same actions are registered as intents, which Home Assistant offers to AI conversation agents
+as tools. With such an agent, natural phrases work in any language it speaks: "Robin woke up ten
+minutes ago", "wet diaper for Robin at half past two", "delete Robin's last diaper". Nothing has to
+be exposed or configured per action. The built-in sentence-matching agent does not understand
+these phrases; with it, use the entities ("turn on Robin sleep").
+
 ## Install
 
 1. In HACS, add this repository as a custom repository of type *Integration* and install
@@ -79,16 +120,14 @@ automation:
 
 ## Status and limits
 
-- **Not yet tried against a real account.** The code is covered by tests that run inside Home
-  Assistant against an in-memory imitation of Firebase, built from the protocol documented by the
-  upstream SDK. The first real sign-in and the first real diaper entry still have to be checked by
-  hand; start with the wet-diaper button and delete the entry in the app.
+- Sign-in, reading and writing have been confirmed against a real account. The automated tests
+  run inside Home Assistant against an in-memory imitation of Firebase.
 - It can break. It identifies itself to Google as the Android app (version 7.0.8) and relies on
   the app's current data layout. An app update or a change on the developer's side can stop it
   working, and it is outside the app's terms of service.
 - Updates from the phones arrive within about 30 seconds, not instantly.
-- Only diapers, sleep and breastfeeding are covered. Bottles, medicine and the rest are a small
-  addition each.
+- Diapers, sleep, breastfeeding and bottles are covered. Medicine, pumping and the rest are a
+  small addition each.
 
 ## Where the protocol knowledge comes from
 

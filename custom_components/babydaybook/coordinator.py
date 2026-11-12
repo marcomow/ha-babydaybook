@@ -5,17 +5,25 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import (
     SIDE_LEFT,
     SIDE_RIGHT,
+    TYPE_BOTTLE,
     TYPE_BREASTFEEDING,
+    TYPE_DIAPER,
     TYPE_SLEEP,
     Baby,
     BabyDaybookApiError,
@@ -30,6 +38,14 @@ from .const import (
     DOMAIN,
     FULL_REFRESH_INTERVAL,
     MAX_CACHED_ACTIONS,
+    MAX_END_CORRECTION,
+    OUTCOME_CORRECTED,
+    OUTCOME_DELETED,
+    OUTCOME_LOGGED,
+    OUTCOME_STARTED,
+    OUTCOME_STOPPED,
+    OUTCOME_SWITCHED,
+    OUTCOME_UNCHANGED,
     POLL_INTERVAL,
     RECENT_ACTIONS,
 )
@@ -54,6 +70,18 @@ class BabyState:
     def last(self, action_type: str) -> dict[str, Any] | None:
         """Return the newest record of a type, if any."""
         return last_action(self.actions.values(), action_type)
+
+    def last_finished(self, action_type: str) -> dict[str, Any] | None:
+        """Return the newest record of a type that has ended, if any."""
+        finished = [
+            action
+            for action in self.actions.values()
+            if action.get("type") == action_type
+            and action.get("endMillis")
+            and not action.get("inProgress")
+            and not action.get("deleted")
+        ]
+        return max(finished, key=lambda a: a["endMillis"], default=None)
 
     def merge(self, records: list[dict[str, Any]]) -> None:
         """Add or replace records and advance the sync cursor."""
@@ -129,7 +157,12 @@ class BabyDaybookCoordinator(DataUpdateCoordinator[dict[str, BabyState]]):
         state.actions = {}
         state.merge(records)
 
-    # ----- actions used by the entities ------------------------------------
+    # ----- actions used by the entities, services and voice intents ----------
+
+    @property
+    def babies(self) -> list[Baby]:
+        """Return the babies of this account."""
+        return [state.baby for state in self._states.values()]
 
     async def _fresh_state(self, baby_uid: str) -> BabyState:
         """Return a baby's state after checking for changes made on the phones."""
@@ -137,52 +170,182 @@ class BabyDaybookCoordinator(DataUpdateCoordinator[dict[str, BabyState]]):
         await self._refresh(state)
         return state
 
-    def _publish(self, state: BabyState, record: dict[str, Any]) -> None:
-        state.actions[record["uid"]] = record
+    def _publish(self, state: BabyState, record: dict[str, Any] | None) -> None:
+        if record:
+            state.actions[record["uid"]] = record
         self.async_set_updated_data(dict(self._states))
 
-    async def async_log_diaper(self, baby_uid: str, *, pee: bool, poo: bool) -> None:
-        """Record a diaper change."""
+    async def async_log_diaper(
+        self, baby_uid: str, *, pee: bool, poo: bool, at: datetime | None = None
+    ) -> str:
+        """Record a diaper change, now or at a past moment."""
+        at_millis = _past_millis(at)
         try:
-            record = await self.client.log_diaper(baby_uid, pee=pee, poo=poo)
+            record = await self.client.log_diaper(
+                baby_uid, pee=pee, poo=poo, at_millis=at_millis
+            )
         except BabyDaybookError as err:
             raise HomeAssistantError(f"Could not log the diaper change: {err}") from err
         self._publish(self._states[baby_uid], record)
+        return OUTCOME_LOGGED
 
-    async def async_set_sleep(self, baby_uid: str, asleep: bool) -> None:
-        """Start or stop the sleep timer; does nothing if already in that state."""
+    async def async_log_bottle(
+        self, baby_uid: str, *, amount_ml: float, at: datetime | None = None
+    ) -> str:
+        """Record a bottle feed, with the same feed type as the previous bottle."""
+        at_millis = _past_millis(at)
         try:
             state = await self._fresh_state(baby_uid)
-            running = state.running(TYPE_SLEEP)
-            if asleep and not running:
-                record = await self.client.start_timer(baby_uid, TYPE_SLEEP)
-            elif not asleep and running:
-                record = await self.client.stop_timer(running)
-            else:
-                self.async_set_updated_data(dict(self._states))
-                return
+            previous = state.last(TYPE_BOTTLE)
+            record = await self.client.log_bottle(
+                baby_uid,
+                volume_ml=amount_ml,
+                group_uid=(previous or {}).get("groupUid") or "",
+                at_millis=at_millis,
+            )
         except BabyDaybookError as err:
-            raise HomeAssistantError(f"Could not update sleep: {err}") from err
+            raise HomeAssistantError(f"Could not log the bottle: {err}") from err
         self._publish(state, record)
+        return OUTCOME_LOGGED
 
-    async def async_set_breastfeeding(self, baby_uid: str, side: str | None) -> None:
+    async def async_correct_diaper(
+        self,
+        baby_uid: str,
+        *,
+        pee: bool | None = None,
+        poo: bool | None = None,
+        at: datetime | None = None,
+    ) -> str:
+        """Change what was in the newest diaper, when it was changed, or both."""
+        changes: dict[str, Any] = {}
+        if pee is not None and poo is not None:
+            changes |= {"pee": int(pee), "poo": int(poo)}
+        if (at_millis := _past_millis(at)) is not None:
+            changes["startMillis"] = at_millis
+        if not changes:
+            raise ServiceValidationError("Say what to correct: the kind, the time or both")
+        return await self._edit_last(baby_uid, TYPE_DIAPER, changes)
+
+    async def async_add_note(self, baby_uid: str, action_type: str, note: str) -> str:
+        """Set the note on the newest record of a type."""
+        return await self._edit_last(baby_uid, action_type, {"notes": note.strip()})
+
+    async def _edit_last(
+        self, baby_uid: str, action_type: str, changes: dict[str, Any]
+    ) -> str:
+        try:
+            state = await self._fresh_state(baby_uid)
+            last = state.last(action_type)
+            if not last:
+                raise ServiceValidationError("There is no recent entry to change")
+            record = await self.client.edit_action(last, changes)
+        except BabyDaybookError as err:
+            raise HomeAssistantError(f"Baby Daybook update failed: {err}") from err
+        self._publish(state, record)
+        return OUTCOME_CORRECTED
+
+    async def async_set_sleep(
+        self, baby_uid: str, asleep: bool, at: datetime | None = None
+    ) -> str:
+        """State that the baby fell asleep or woke up, now or at a past moment.
+
+        Without a time this starts or stops the timer and does nothing if it
+        is already in that state. With a time it also corrects: "fell asleep
+        at" moves the start of a running sleep, and "woke up at" moves the end
+        of a sleep that was already stopped.
+        """
+        return await self._set_timer(baby_uid, TYPE_SLEEP, asleep, at, side="")
+
+    async def async_set_breastfeeding(
+        self, baby_uid: str, side: str | None, at: datetime | None = None
+    ) -> str:
         """Feed on a side (starting or switching as needed), or stop with None."""
         if side not in (SIDE_LEFT, SIDE_RIGHT, None):
-            raise HomeAssistantError(f"Unknown breastfeeding side: {side}")
+            raise ServiceValidationError(f"Unknown breastfeeding side: {side}")
+        return await self._set_timer(
+            baby_uid, TYPE_BREASTFEEDING, side is not None, at, side=side or ""
+        )
+
+    async def _set_timer(
+        self,
+        baby_uid: str,
+        action_type: str,
+        on: bool,
+        at: datetime | None,
+        *,
+        side: str,
+    ) -> str:
+        at_millis = _past_millis(at)
+        client = self.client
+        record: dict[str, Any] | None = None
+        outcome = OUTCOME_UNCHANGED
         try:
             state = await self._fresh_state(baby_uid)
-            running = state.running(TYPE_BREASTFEEDING)
-            if side is None and running:
-                record = await self.client.stop_timer(running)
-            elif side and not running:
-                record = await self.client.start_timer(
-                    baby_uid, TYPE_BREASTFEEDING, side=side
+            running = state.running(action_type)
+            if on and not running:
+                record = await client.start_timer(
+                    baby_uid, action_type, side=side, start_millis=at_millis
                 )
-            elif side and running and running.get("side") != side:
-                record = await self.client.switch_side(running, side)
-            else:
-                self.async_set_updated_data(dict(self._states))
-                return
+                outcome = OUTCOME_STARTED
+            elif on and running and side and running.get("side") != side:
+                _require_after(at_millis, running["startMillis"], "started")
+                record = await client.switch_side(running, side, at_millis)
+                outcome = OUTCOME_SWITCHED
+            elif on and running and at_millis is not None:
+                record = await client.retime(running, start_millis=at_millis)
+                outcome = OUTCOME_CORRECTED
+            elif not on and running:
+                _require_after(at_millis, running["startMillis"], "started")
+                record = await client.stop_timer(running, at_millis)
+                outcome = OUTCOME_STOPPED
+            elif not on and at_millis is not None:
+                last = state.last(action_type)
+                if not last or not last.get("endMillis"):
+                    raise ServiceValidationError("There is nothing to correct yet")
+                if abs(at_millis - last["endMillis"]) > MAX_END_CORRECTION.total_seconds() * 1000:
+                    raise ServiceValidationError(
+                        "No timer is running, and the last one ended at "
+                        f"{_local_time(last['endMillis'])}, too far from "
+                        f"{_local_time(at_millis)} to be a correction"
+                    )
+                _require_after(at_millis, last["startMillis"], "started")
+                record = await client.retime(last, end_millis=at_millis)
+                outcome = OUTCOME_CORRECTED
         except BabyDaybookError as err:
-            raise HomeAssistantError(f"Could not update breastfeeding: {err}") from err
+            raise HomeAssistantError(f"Baby Daybook update failed: {err}") from err
         self._publish(state, record)
+        return outcome
+
+    async def async_delete_last(self, baby_uid: str, action_type: str) -> str:
+        """Delete the newest record of a type, to undo a mistake."""
+        try:
+            state = await self._fresh_state(baby_uid)
+            last = state.last(action_type)
+            if not last:
+                raise ServiceValidationError("There is nothing recent to delete")
+            record = await self.client.delete_action(last)
+        except BabyDaybookError as err:
+            raise HomeAssistantError(f"Baby Daybook update failed: {err}") from err
+        self._publish(state, record)
+        return OUTCOME_DELETED
+
+
+def _past_millis(at: datetime | None) -> int | None:
+    """Convert a moment to epoch milliseconds, refusing the future."""
+    if at is None:
+        return None
+    if at > dt_util.utcnow() + timedelta(minutes=1):
+        raise ServiceValidationError("The time must not be in the future")
+    return int(at.timestamp() * 1000)
+
+
+def _require_after(at_millis: int | None, start_millis: int, what: str) -> None:
+    if at_millis is not None and at_millis <= start_millis:
+        raise ServiceValidationError(
+            f"{_local_time(at_millis)} is before it {what} "
+            f"({_local_time(start_millis)})"
+        )
+
+
+def _local_time(millis: int) -> str:
+    return dt_util.as_local(dt_util.utc_from_timestamp(millis / 1000)).strftime("%H:%M")

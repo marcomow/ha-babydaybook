@@ -1,12 +1,14 @@
 {
   "domain": "babydaybook",
   "name": "Baby Daybook",
-  "codeowners": ["@marcomow"],
+  "codeowners": [
+    "@marcomow"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/marcomow/ha-babydaybook",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/marcomow/ha-babydaybook/issues",
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.3.0"
 }

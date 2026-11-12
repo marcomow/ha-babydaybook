@@ -45,6 +45,7 @@ DOCUMENT_PREFIX = f"projects/{PROJECT_ID}/databases/(default)/documents"
 TYPE_DIAPER = "diaper_change"
 TYPE_SLEEP = "sleeping"
 TYPE_BREASTFEEDING = "breastfeeding"
+TYPE_BOTTLE = "bottle"
 
 SIDE_LEFT = "left"
 SIDE_RIGHT = "right"
@@ -238,6 +239,8 @@ def build_action(
     side: str = "",
     pee: bool = False,
     poo: bool = False,
+    volume: float = 0,
+    group_uid: str = "",
 ) -> dict[str, Any]:
     """Build a complete ``dailyActions`` record the way the app writes them."""
     return {
@@ -248,7 +251,7 @@ def build_action(
         "startMillis": start_millis,
         "updatedMillis": now_millis(),
         "rev": 4,
-        "groupUid": "",
+        "groupUid": group_uid,
         "notes": "",
         "inProgress": 1 if in_progress else 0,
         "endMillis": 0,
@@ -262,7 +265,7 @@ def build_action(
         "amountUnit": "",
         "temperature": 0,
         "hairWash": 0,
-        "volume": 0,
+        "volume": volume,
         "pee": 1 if pee else 0,
         "poo": 1 if poo else 0,
     }
@@ -306,6 +309,41 @@ def switch_side_changes(
         "rightDuration": right + (elapsed if previous == SIDE_RIGHT else 0),
         "updatedMillis": now_millis(),
     }
+
+
+def retime_changes(
+    action: dict[str, Any],
+    *,
+    start_millis: int | None = None,
+    end_millis: int | None = None,
+) -> dict[str, Any]:
+    """Return the fields that change when a record's start or end is corrected.
+
+    The end can only be corrected on a finished record; a running timer has
+    none yet.
+    """
+    start = action.get("startMillis", 0) if start_millis is None else start_millis
+    changes: dict[str, Any] = {"updatedMillis": now_millis()}
+    if start_millis is not None:
+        changes["startMillis"] = start
+    finished = not action.get("inProgress") and bool(action.get("endMillis"))
+    if not finished:
+        return changes
+    end = action["endMillis"] if end_millis is None else end_millis
+    duration = max(0, end - start)
+    changes["endMillis"] = end
+    changes["duration"] = duration
+    side = action.get("side")
+    if action.get("type") == TYPE_BREASTFEEDING and side in (SIDE_LEFT, SIDE_RIGHT):
+        # Keep left + right equal to the total by adjusting the last side fed on.
+        left = action.get("leftDuration") or 0
+        right = action.get("rightDuration") or 0
+        delta = duration - left - right
+        if side == SIDE_LEFT:
+            changes["leftDuration"] = max(0, left + delta)
+        else:
+            changes["rightDuration"] = max(0, right + delta)
+    return changes
 
 
 # --------------------------------------------------------------------------
@@ -596,10 +634,45 @@ class BabyDaybookClient:
             )
         )
 
-    async def start_timer(
-        self, baby_uid: str, action_type: str, *, side: str = ""
+    async def log_bottle(
+        self,
+        baby_uid: str,
+        *,
+        volume_ml: float,
+        group_uid: str = "",
+        at_millis: int | None = None,
     ) -> dict[str, Any]:
-        """Start a sleep or breastfeeding timer."""
+        """Record a finished bottle feed; the amount is in millilitres."""
+        if not self.user_uid:
+            await self.authenticate()
+        return await self._create_action(
+            build_action(
+                user_uid=self.user_uid,
+                baby_uid=baby_uid,
+                action_type=TYPE_BOTTLE,
+                start_millis=at_millis or now_millis(),
+                volume=float(volume_ml),
+                group_uid=group_uid,
+            )
+        )
+
+    async def edit_action(
+        self, action: dict[str, Any], changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Change some fields of a record."""
+        return await self._update_action(
+            action, {**changes, "updatedMillis": now_millis()}
+        )
+
+    async def start_timer(
+        self,
+        baby_uid: str,
+        action_type: str,
+        *,
+        side: str = "",
+        start_millis: int | None = None,
+    ) -> dict[str, Any]:
+        """Start a sleep or breastfeeding timer, now or at a past moment."""
         if not self.user_uid:
             await self.authenticate()
         return await self._create_action(
@@ -607,20 +680,45 @@ class BabyDaybookClient:
                 user_uid=self.user_uid,
                 baby_uid=baby_uid,
                 action_type=action_type,
-                start_millis=now_millis(),
+                start_millis=start_millis or now_millis(),
                 in_progress=True,
                 side=side,
             )
         )
 
-    async def stop_timer(self, action: dict[str, Any]) -> dict[str, Any]:
-        """Stop a running timer."""
-        return await self._update_action(action, stop_changes(action, now_millis()))
+    async def stop_timer(
+        self, action: dict[str, Any], end_millis: int | None = None
+    ) -> dict[str, Any]:
+        """Stop a running timer, now or at a past moment."""
+        return await self._update_action(
+            action, stop_changes(action, end_millis or now_millis())
+        )
 
-    async def switch_side(self, action: dict[str, Any], side: str) -> dict[str, Any]:
+    async def switch_side(
+        self, action: dict[str, Any], side: str, at_millis: int | None = None
+    ) -> dict[str, Any]:
         """Move a running breastfeeding timer to the other side."""
         return await self._update_action(
-            action, switch_side_changes(action, side, now_millis())
+            action, switch_side_changes(action, side, at_millis or now_millis())
+        )
+
+    async def retime(
+        self,
+        action: dict[str, Any],
+        *,
+        start_millis: int | None = None,
+        end_millis: int | None = None,
+    ) -> dict[str, Any]:
+        """Correct when a record started or, once finished, when it ended."""
+        return await self._update_action(
+            action,
+            retime_changes(action, start_millis=start_millis, end_millis=end_millis),
+        )
+
+    async def delete_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Delete a record the way the app does: by marking it deleted."""
+        return await self._update_action(
+            action, {"deleted": 1, "updatedMillis": now_millis()}
         )
 
 

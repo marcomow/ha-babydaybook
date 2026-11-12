@@ -1,0 +1,81 @@
+{
+  "entity": {
+    "button": {
+      "diaper_wet": {
+        "default": "mdi:water"
+      },
+      "diaper_dirty": {
+        "default": "mdi:emoticon-poop"
+      },
+      "diaper_mixed": {
+        "default": "mdi:human-baby-changing-table"
+      }
+    },
+    "switch": {
+      "sleep": {
+        "default": "mdi:sleep-off",
+        "state": {
+          "on": "mdi:sleep"
+        }
+      },
+      "breastfeeding_left": {
+        "default": "mdi:alpha-l-circle-outline",
+        "state": {
+          "on": "mdi:mother-nurse"
+        }
+      },
+      "breastfeeding_right": {
+        "default": "mdi:alpha-r-circle-outline",
+        "state": {
+          "on": "mdi:mother-nurse"
+        }
+      }
+    },
+    "sensor": {
+      "last_diaper": {
+        "default": "mdi:human-baby-changing-table"
+      },
+      "last_sleep": {
+        "default": "mdi:bed-clock"
+      },
+      "last_breastfeeding": {
+        "default": "mdi:mother-nurse"
+      },
+      "last_bottle": {
+        "default": "mdi:baby-bottle-outline"
+      },
+      "last_wake_up": {
+        "default": "mdi:weather-sunset-up"
+      }
+    }
+  },
+  "services": {
+    "log_diaper": {
+      "service": "mdi:human-baby-changing-table"
+    },
+    "fell_asleep": {
+      "service": "mdi:sleep"
+    },
+    "woke_up": {
+      "service": "mdi:sleep-off"
+    },
+    "start_breastfeeding": {
+      "service": "mdi:mother-nurse"
+    },
+    "stop_breastfeeding": {
+      "service": "mdi:timer-stop-outline"
+    },
+    "delete_last": {
+      "service": "mdi:undo"
+    },
+    "log_bottle": {
+      "service": "mdi:baby-bottle-outline"
+    },
+    "correct_diaper": {
+      "service": "mdi:pencil-outline"
+    },
+    "add_note": {
+      "service": "mdi:note-edit-outline"
+    }
+  }
+}
